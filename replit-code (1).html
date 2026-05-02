@@ -1,0 +1,316 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>My Task Tracker</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:system-ui,sans-serif;background:#f8fafc;padding:16px}
+.login{max-width:340px;margin:80px auto;background:white;padding:32px;border-radius:12px;box-shadow:0 2px 16px rgba(0,0,0,0.1)}
+.login h2{margin-bottom:20px;color:#1e293b;text-align:center}
+.login input{width:100%;padding:10px;border:1px solid #cbd5e1;border-radius:8px;font-size:15px;margin-bottom:12px}
+.login button{width:100%;padding:12px;background:#1e293b;color:white;border:none;border-radius:8px;font-size:15px;cursor:pointer}
+.login .err{color:#ef4444;font-size:13px;margin-bottom:10px;text-align:center}
+h2{color:#1e293b;margin-bottom:12px;font-size:18px}
+.header{background:#1e293b;border-radius:12px;padding:16px;margin-bottom:16px;color:white}
+.prog-bar{background:#334155;border-radius:10px;height:8px;margin-top:8px}
+.prog-fill{background:#22c55e;border-radius:10px;height:8px;transition:width 0.3s}
+.tabs{display:flex;gap:8px;margin-bottom:12px}
+.tab{padding:6px 14px;border-radius:20px;border:none;cursor:pointer;font-size:13px}
+.add-row{display:flex;gap:8px;margin-bottom:16px}
+.add-row input{flex:1;padding:10px;border:1px solid #cbd5e1;border-radius:8px;font-size:14px}
+.add-row button{background:#1e293b;color:white;border:none;border-radius:8px;padding:10px 14px;font-size:14px;cursor:pointer}
+.filters,.sorts{display:flex;gap:6px;margin-bottom:12px;flex-wrap:wrap;align-items:center}
+.filters span,.sorts span{font-size:12px;color:#64748b}
+.fbtn{padding:5px 12px;border-radius:20px;border:none;cursor:pointer;font-size:12px}
+.task{background:white;border-radius:8px;padding:12px;margin-bottom:8px;border-left:4px solid #94a3b8}
+.task-row{display:flex;align-items:center;gap:8px}
+.task-row input[type=checkbox]{width:18px;height:18px;cursor:pointer;flex-shrink:0}
+.title{flex:1;font-size:14px;font-weight:500;color:#1e293b}
+.done-title{text-decoration:line-through;opacity:0.5}
+.del{background:none;border:none;color:#ef4444;font-size:20px;cursor:pointer;padding:0 4px}
+.star{background:none;border:none;font-size:18px;cursor:pointer;padding:0 2px}
+.meta{margin-left:26px;margin-top:6px;display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.meta select,.meta input[type=date]{font-size:12px;border:1px solid #e2e8f0;border-radius:6px;padding:3px 6px;background:white}
+.note-inp{width:calc(100% - 26px);margin-left:26px;margin-top:6px;padding:6px 8px;border:1px solid #e2e8f0;border-radius:6px;font-size:13px}
+.sub{margin-left:26px;margin-top:4px;font-size:13px;color:#64748b}
+.top3card{background:#fefce8;border:1px solid #fde68a;border-radius:8px;padding:10px;margin-bottom:6px;display:flex;align-items:center;gap:8px;font-size:14px;font-weight:500}
+.badge{font-size:11px;background:#fee2e2;color:#ef4444;border-radius:10px;padding:2px 6px;font-weight:600}
+.saved{color:#22c55e;font-size:13px}
+.logout{background:none;border:1px solid rgba(255,255,255,0.3);color:white;border-radius:6px;padding:3px 10px;font-size:12px;cursor:pointer}
+</style>
+</head>
+<body>
+
+<!-- Login Screen -->
+<div class="login" id="loginScreen">
+  <h2>🔐 My Task Tracker</h2>
+  <div class="err" id="loginErr"></div>
+  <input type="password" id="pwInput" placeholder="Enter password" onkeydown="if(event.key==='Enter')login()">
+  <button onclick="login()">Login</button>
+</div>
+
+<!-- App Screen -->
+<div id="appScreen" style="display:none;max-width:600px;margin:0 auto">
+  <div class="header">
+    <div style="display:flex;justify-content:space-between;align-items:center">
+      <h2 style="margin:0;font-size:18px;color:white">📋 My Tasks</h2>
+      <div style="display:flex;align-items:center;gap:10px">
+        <span id="savedMsg" class="saved"></span>
+        <span id="countMsg" style="font-size:13px;opacity:0.8;color:white"></span>
+        <button class="logout" onclick="logout()">Logout</button>
+      </div>
+    </div>
+    <div class="prog-bar"><div class="prog-fill" id="progFill"></div></div>
+    <div style="font-size:12px;margin-top:4px;opacity:0.7;color:white" id="progPct"></div>
+  </div>
+
+  <div class="tabs">
+    <button class="tab" id="tabAll" onclick="setTab('all')">All Tasks</button>
+    <button class="tab" id="tabTop3" onclick="setTab('top3')">⭐ Top 3 Today</button>
+  </div>
+
+  <div id="top3Section" style="display:none;margin-bottom:16px">
+    <p style="font-size:13px;color:#64748b;margin-bottom:8px">Your 3 must-do tasks. Pin from All Tasks using ⭐</p>
+    <div id="top3List"></div>
+  </div>
+
+  <div id="allSection">
+    <div class="add-row">
+      <input type="text" id="newTask" placeholder="Add a task..." onkeydown="if(event.key==='Enter')addTask()">
+      <button onclick="addTask()">+ Add</button>
+    </div>
+    <div class="filters">
+      <span>Filter:</span>
+      <button class="fbtn" id="f-all" onclick="setFilter('all')">All</button>
+      <button class="fbtn" id="f-active" onclick="setFilter('active')">Active</button>
+      <button class="fbtn" id="f-done" onclick="setFilter('done')">Done</button>
+      <button class="fbtn" id="f-high" onclick="setFilter('high')">High Priority</button>
+      <button class="fbtn" id="f-overdue" onclick="setFilter('overdue')">Overdue</button>
+    </div>
+    <div class="sorts">
+      <span>Sort:</span>
+      <button class="fbtn" id="s-manual" onclick="setSort('manual')">Manual</button>
+      <button class="fbtn" id="s-priority" onclick="setSort('priority')">Priority</button>
+      <button class="fbtn" id="s-due" onclick="setSort('due')">Due Date</button>
+    </div>
+    <div id="taskList"></div>
+  </div>
+</div>
+
+<script>
+var PASSWORD = "KenLonely2026";
+var STORAGE_KEY = "mytasktracker_data";
+var tasks = [];
+var nid = 1;
+var curTab = "all";
+var curFilter = "all";
+var curSort = "manual";
+var expandNote = null;
+
+var PCOL = {high:"#ef4444",medium:"#f97316",low:"#3b82f6",none:"#94a3b8"};
+var PLABEL = {high:"🔴 High",medium:"🟠 Medium",low:"🔵 Low",none:"⚪ None"};
+var PORDER = {high:0,medium:1,low:2,none:3};
+
+var DEFAULT_TASKS = [
+  {id:1,t:"SP27 NIKE BOY",sub:null,done:false,due:"",priority:"none",note:"",top3:false},
+  {id:2,t:"TRACY AGENDA",sub:null,done:false,due:"",priority:"none",note:"",top3:false},
+  {id:3,t:"MOVE UP RECAP FOR DAVID",sub:null,done:false,due:"",priority:"none",note:"",top3:false},
+  {id:4,t:"PREP FOR N360",sub:null,done:false,due:"",priority:"none",note:"",top3:false},
+  {id:5,t:"PREP FOR TRACY",sub:"HURLEY SHORT",done:false,due:"",priority:"none",note:"",top3:false},
+  {id:6,t:"MMX WAREHOUSE LIST",sub:null,done:false,due:"",priority:"none",note:"",top3:false},
+  {id:7,t:"SEND OUT PURGE",sub:null,done:false,due:"",priority:"none",note:"",top3:false},
+  {id:8,t:"BURLINGTON PO'S",sub:null,done:false,due:"",priority:"none",note:"",top3:false},
+  {id:9,t:"BFL PO",sub:null,done:false,due:"",priority:"none",note:"",top3:false},
+  {id:10,t:"RED APPLE",sub:null,done:false,due:"",priority:"none",note:"",top3:false},
+  {id:11,t:"HALFPRICE CONVERSE",sub:null,done:false,due:"",priority:"none",note:"",top3:false},
+  {id:12,t:"C21 ATS",sub:null,done:false,due:"",priority:"none",note:"",top3:false}
+];
+
+function login() {
+  var pw = document.getElementById("pwInput").value;
+  if (pw === PASSWORD) {
+    document.getElementById("loginScreen").style.display = "none";
+    document.getElementById("appScreen").style.display = "block";
+    loadData();
+  } else {
+    document.getElementById("loginErr").textContent = "Incorrect password. Try again.";
+  }
+}
+
+function logout() {
+  document.getElementById("loginScreen").style.display = "block";
+  document.getElementById("appScreen").style.display = "none";
+  document.getElementById("pwInput").value = "";
+}
+
+function loadData() {
+  try {
+    var raw = localStorage.getItem(STORAGE_KEY);
+    if (raw) {
+      var d = JSON.parse(raw);
+      tasks = d.tasks;
+      nid = d.nid || tasks.length + 1;
+    } else {
+      tasks = JSON.parse(JSON.stringify(DEFAULT_TASKS));
+      nid = 13;
+    }
+  } catch(e) {
+    tasks = JSON.parse(JSON.stringify(DEFAULT_TASKS));
+    nid = 13;
+  }
+  render();
+}
+
+function saveData() {
+  localStorage.setItem(STORAGE_KEY, JSON.stringify({tasks:tasks, nid:nid}));
+  var el = document.getElementById("savedMsg");
+  el.textContent = "✓ Saved";
+  setTimeout(function(){ el.textContent = ""; }, 2000);
+}
+
+function getDiff(due) {
+  if (!due) return null;
+  var today = new Date(); today.setHours(0,0,0,0);
+  return Math.round((new Date(due+"T00:00:00") - today) / 86400000);
+}
+
+function setTab(t) { curTab = t; render(); }
+function setFilter(f) { curFilter = f; render(); }
+function setSort(s) { curSort = s; render(); }
+
+function toggleDone(id) {
+  tasks.forEach(function(t){ if(t.id===id) t.done = !t.done; });
+  saveData(); render();
+}
+
+function removetask(id) {
+  tasks = tasks.filter(function(t){ return t.id !== id; });
+  saveData(); render();
+}
+
+function setPriority(id, val) {
+  tasks.forEach(function(t){ if(t.id===id) t.priority = val; });
+  saveData(); render();
+}
+
+function setDue(id, val) {
+  tasks.forEach(function(t){ if(t.id===id) t.due = val; });
+  saveData();
+}
+
+function setNote(id, val) {
+  tasks.forEach(function(t){ if(t.id===id) t.note = val; });
+  saveData();
+}
+
+function toggleTop3(id) {
+  var t = tasks.find(function(x){ return x.id===id; });
+  var count = tasks.filter(function(x){ return x.top3 && !x.done; }).length;
+  if (!t.top3 && count >= 3) { alert("You can only pin 3 tasks!"); return; }
+  t.top3 = !t.top3;
+  saveData(); render();
+}
+
+function toggleNote(id) {
+  expandNote = expandNote === id ? null : id;
+  render();
+}
+
+function addTask() {
+  var v = document.getElementById("newTask").value.trim();
+  if (!v) return;
+  tasks.push({id:nid++, t:v.toUpperCase(), sub:null, done:false, due:"", priority:"none", note:"", top3:false});
+  document.getElementById("newTask").value = "";
+  saveData(); render();
+}
+
+function render() {
+  var done = tasks.filter(function(t){ return t.done; }).length;
+  var total = tasks.length;
+  var pct = total ? Math.round(done/total*100) : 0;
+  document.getElementById("countMsg").textContent = done+"/"+total+" done";
+  document.getElementById("progFill").style.width = pct+"%";
+  document.getElementById("progPct").textContent = pct+"% complete";
+
+  // Tabs
+  document.getElementById("tabAll").style.background = curTab==="all" ? "#1e293b" : "#e2e8f0";
+  document.getElementById("tabAll").style.color = curTab==="all" ? "white" : "#64748b";
+  document.getElementById("tabTop3").style.background = curTab==="top3" ? "#1e293b" : "#e2e8f0";
+  document.getElementById("tabTop3").style.color = curTab==="top3" ? "white" : "#64748b";
+  document.getElementById("top3Section").style.display = curTab==="top3" ? "block" : "none";
+  document.getElementById("allSection").style.display = curTab==="all" ? "block" : "none";
+
+  // Filter buttons
+  ["all","active","done","high","overdue"].forEach(function(f){
+    var el = document.getElementById("f-"+f);
+    el.style.background = curFilter===f ? "#1e293b" : "#e2e8f0";
+    el.style.color = curFilter===f ? "white" : "#64748b";
+  });
+  ["manual","priority","due"].forEach(function(s){
+    var el = document.getElementById("s-"+s);
+    el.style.background = curSort===s ? "#1e293b" : "#e2e8f0";
+    el.style.color = curSort===s ? "white" : "#64748b";
+  });
+
+  // Top 3
+  var top3 = tasks.filter(function(t){ return t.top3 && !t.done; });
+  var t3h = "";
+  if (top3.length===0) t3h = '<div style="color:#94a3b8;font-size:14px;padding:12px;background:white;border-radius:8px">No tasks pinned yet. Go to All Tasks and tap ⭐</div>';
+  top3.forEach(function(t){
+    var diff = getDiff(t.due);
+    t3h += '<div class="top3card"><input type="checkbox" onchange="toggleDone('+t.id+')" style="width:18px;height:18px;cursor:pointer"><span style="flex:1">'+t.t+'</span>';
+    if (diff===0) t3h += '<span style="font-size:12px;color:#92400e">Due today</span>';
+    t3h += '</div>';
+  });
+  document.getElementById("top3List").innerHTML = t3h;
+
+  // Filter tasks
+  var visible = tasks.filter(function(t){
+    if (curFilter==="active") return !t.done;
+    if (curFilter==="done") return t.done;
+    if (curFilter==="high") return t.priority==="high" && !t.done;
+    if (curFilter==="overdue") { var d=getDiff(t.due); return d!==null&&d<0&&!t.done; }
+    return true;
+  });
+
+  // Sort
+  if (curSort==="priority") visible.sort(function(a,b){ return PORDER[a.priority]-PORDER[b.priority]; });
+  else if (curSort==="due") visible.sort(function(a,b){
+    if (!a.due&&!b.due) return 0; if (!a.due) return 1; if (!b.due) return -1;
+    return new Date(a.due)-new Date(b.due);
+  });
+
+  var h = "";
+  visible.forEach(function(t, i){
+    var diff = !t.done ? getDiff(t.due) : null;
+    var overdue = diff!==null && diff<0;
+    var bc = overdue ? "#ef4444" : PCOL[t.priority];
+    h += '<div class="task" style="border-left-color:'+bc+';opacity:'+(t.done?0.5:1)+'">';
+    h += '<div class="task-row">';
+    h += '<input type="checkbox"'+(t.done?" checked":"")+" onchange=\"toggleDone("+t.id+")\" style=\"width:18px;height:18px;cursor:pointer\">";
+    h += '<span class="title'+(t.done?" done-title":"")+'">'+( i+1)+". "+t.t+"</span>";
+    if (overdue) h += '<span class="badge">OVERDUE</span>';
+    h += '<button class="star" onclick="toggleTop3('+t.id+')">'+(t.top3?"⭐":"☆")+"</button>";
+    h += '<button class="del" onclick="removetask('+t.id+')">×</button>';
+    h += "</div>";
+    h += '<div class="meta">';
+    h += '<select onchange="setPriority('+t.id+',this.value)" style="color:'+PCOL[t.priority]+'">';
+    Object.entries(PLABEL).forEach(function(e){ h += '<option value="'+e[0]+'"'+(t.priority===e[0]?" selected":"")+">"+e[1]+"</option>"; });
+    h += "</select>";
+    h += '<input type="date" value="'+(t.due||"")+'" onchange="setDue('+t.id+',this.value)">';
+    if (diff===0) h += '<span style="font-size:12px;color:#f97316">Due today</span>';
+    else if (diff!==null&&diff>0&&diff<=2) h += '<span style="font-size:12px;color:#f97316">In '+diff+'d</span>';
+    else if (diff!==null&&diff>2) h += '<span style="font-size:12px;color:#94a3b8">In '+diff+'d</span>';
+    h += '<button class="fbtn" style="background:#f1f5f9;color:#64748b" onclick="toggleNote('+t.id+')">'+(expandNote===t.id?"Hide note":"📝 Note")+"</button>";
+    h += "</div>";
+    if (expandNote===t.id) h += '<input class="note-inp" placeholder="Add a note..." value="'+(t.note||"")+'" oninput="setNote('+t.id+',this.value)">';
+    else if (t.note) h += '<div class="sub" style="color:#94a3b8;font-style:italic">📝 '+t.note+"</div>";
+    if (t.sub) h += '<div class="sub">• '+t.sub+"</div>";
+    h += "</div>";
+  });
+  document.getElementById("taskList").innerHTML = h;
+}
+</script>
+</body>
+</html>
