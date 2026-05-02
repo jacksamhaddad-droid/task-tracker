@@ -10,7 +10,7 @@ body{font-family:system-ui,sans-serif;background:#f8fafc;padding:16px}
 .login h2{margin-bottom:20px;color:#1e293b;text-align:center}
 .login input{width:100%;padding:10px;border:1px solid #cbd5e1;border-radius:8px;font-size:15px;margin-bottom:12px}
 .login button{width:100%;padding:12px;background:#1e293b;color:white;border:none;border-radius:8px;font-size:15px;cursor:pointer}
-.login .err{color:#ef4444;font-size:13px;margin-bottom:10px;text-align:center}
+.err{color:#ef4444;font-size:13px;margin-bottom:10px;text-align:center}
 .header{background:#1e293b;border-radius:12px;padding:16px;margin-bottom:16px;color:white}
 .prog-bar{background:#334155;border-radius:10px;height:8px;margin-top:8px}
 .prog-fill{background:#22c55e;border-radius:10px;height:8px;transition:width 0.3s}
@@ -39,7 +39,7 @@ body{font-family:system-ui,sans-serif;background:#f8fafc;padding:16px}
 .sub{margin-left:26px;margin-top:4px;font-size:13px;color:#64748b}
 .top3card{background:#fefce8;border:1px solid #fde68a;border-radius:8px;padding:10px;margin-bottom:6px;display:flex;align-items:center;gap:8px;font-size:14px;font-weight:500}
 .badge{font-size:11px;background:#fee2e2;color:#ef4444;border-radius:10px;padding:2px 6px;font-weight:600}
-.saved{color:#22c55e;font-size:13px}
+.savedmsg{font-size:13px}
 .logout{background:none;border:1px solid rgba(255,255,255,0.3);color:white;border-radius:6px;padding:3px 10px;font-size:12px;cursor:pointer}
 </style>
 </head>
@@ -57,7 +57,7 @@ body{font-family:system-ui,sans-serif;background:#f8fafc;padding:16px}
     <div style="display:flex;justify-content:space-between;align-items:center">
       <h2 style="margin:0;font-size:18px;color:white">📋 My Tasks</h2>
       <div style="display:flex;align-items:center;gap:10px">
-        <span id="savedMsg" class="saved"></span>
+        <span id="savedMsg" class="savedmsg"></span>
         <span id="countMsg" style="font-size:13px;opacity:0.8;color:white"></span>
         <button class="logout" onclick="logout()">Logout</button>
       </div>
@@ -95,21 +95,27 @@ body{font-family:system-ui,sans-serif;background:#f8fafc;padding:16px}
       <button class="fbtn" id="s-priority" onclick="setSort('priority')">Priority</button>
       <button class="fbtn" id="s-due" onclick="setSort('due')">Due Date</button>
     </div>
-    <p style="font-size:12px;color:#94a3b8;margin-bottom:10px">☰ Drag the handle to reorder tasks manually</p>
+    <p style="font-size:12px;color:#94a3b8;margin-bottom:10px">☰ Drag to reorder tasks manually</p>
     <div id="taskList"></div>
   </div>
 </div>
 
 <script>
 var PASSWORD = "KenLonely2026";
-var STORAGE_KEY = "mytasktracker_data";
+var SUPABASE_URL = "https://unsbcpsxargcmpwpmuha.supabase.co";
+var SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVuc2JjcHN4YXJnY21wd3BtdWhhIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzc3NTI4MTksImV4cCI6MjA5MzMyODgxOX0.VyfVcKKG2TjCgFIGoZfS46ROK3qpvI6AIs9bsRGLuCI";
+var API = SUPABASE_URL + "/rest/v1/tasks";
+var HEADERS = {"Content-Type":"application/json","apikey":SUPABASE_KEY,"Authorization":"Bearer "+SUPABASE_KEY};
+
 var tasks = [];
 var nid = 1;
+var rowId = null;
 var curTab = "all";
 var curFilter = "all";
 var curSort = "manual";
 var expandNote = null;
 var dragSrcId = null;
+var saveTimer = null;
 
 var PCOL = {high:"#ef4444",medium:"#f97316",low:"#3b82f6",none:"#94a3b8"};
 var PLABEL = {high:"🔴 High",medium:"🟠 Medium",low:"🔵 Low",none:"⚪ None"};
@@ -136,7 +142,7 @@ function login() {
     document.getElementById("appScreen").style.display = "block";
     loadData();
   } else {
-    document.getElementById("loginErr").textContent = "Incorrect password. Try again.";
+    document.getElementById("loginErr").textContent = "Incorrect password.";
   }
 }
 
@@ -146,20 +152,57 @@ function logout() {
   document.getElementById("pwInput").value = "";
 }
 
-function loadData() {
-  try {
-    var raw = localStorage.getItem(STORAGE_KEY);
-    if (raw) { var d = JSON.parse(raw); tasks = d.tasks; nid = d.nid || tasks.length + 1; }
-    else { tasks = JSON.parse(JSON.stringify(DEFAULT_TASKS)); nid = 13; }
-  } catch(e) { tasks = JSON.parse(JSON.stringify(DEFAULT_TASKS)); nid = 13; }
-  render();
+function showMsg(msg, color) {
+  var el = document.getElementById("savedMsg");
+  el.textContent = msg;
+  el.style.color = color || "#22c55e";
+  setTimeout(function(){ el.textContent = ""; }, 2500);
 }
 
-function saveData() {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify({tasks:tasks, nid:nid}));
-  var el = document.getElementById("savedMsg");
-  el.textContent = "✓ Saved";
-  setTimeout(function(){ el.textContent = ""; }, 2000);
+async function loadData() {
+  showMsg("Loading...", "#94a3b8");
+  try {
+    var res = await fetch(API + "?select=*&order=id.asc&limit=1", {headers: HEADERS});
+    var rows = await res.json();
+    if (rows && rows.length > 0) {
+      rowId = rows[0].id;
+      tasks = rows[0].data;
+      nid = tasks.length > 0 ? Math.max.apply(null, tasks.map(function(t){ return t.id; })) + 1 : 1;
+    } else {
+      tasks = JSON.parse(JSON.stringify(DEFAULT_TASKS));
+      nid = 13;
+      await createRow();
+    }
+  } catch(e) {
+    tasks = JSON.parse(JSON.stringify(DEFAULT_TASKS));
+    nid = 13;
+    showMsg("⚠ Offline mode", "#f97316");
+  }
+  render();
+  showMsg("");
+}
+
+async function createRow() {
+  try {
+    var res = await fetch(API, {method:"POST", headers: Object.assign({}, HEADERS, {"Prefer":"return=representation"}), body: JSON.stringify({data: tasks})});
+    var rows = await res.json();
+    if (rows && rows[0]) rowId = rows[0].id;
+  } catch(e) {}
+}
+
+function scheduleSave() {
+  clearTimeout(saveTimer);
+  saveTimer = setTimeout(saveData, 600);
+}
+
+async function saveData() {
+  if (!rowId) { await createRow(); return; }
+  try {
+    await fetch(API + "?id=eq." + rowId, {method:"PATCH", headers: HEADERS, body: JSON.stringify({data: tasks, updated_at: new Date().toISOString()})});
+    showMsg("✓ Saved");
+  } catch(e) {
+    showMsg("✗ Save failed", "#ef4444");
+  }
 }
 
 function getDiff(due) {
@@ -168,136 +211,132 @@ function getDiff(due) {
   return Math.round((new Date(due+"T00:00:00") - today) / 86400000);
 }
 
-function setTab(t) { curTab = t; render(); }
-function setFilter(f) { curFilter = f; render(); }
-function setSort(s) { curSort = s; render(); }
-function toggleDone(id) { tasks.forEach(function(t){ if(t.id===id) t.done=!t.done; }); saveData(); render(); }
-function removetask(id) { tasks = tasks.filter(function(t){ return t.id!==id; }); saveData(); render(); }
-function setPriority(id, val) { tasks.forEach(function(t){ if(t.id===id) t.priority=val; }); saveData(); render(); }
-function setDue(id, val) { tasks.forEach(function(t){ if(t.id===id) t.due=val; }); saveData(); }
-function setNote(id, val) { tasks.forEach(function(t){ if(t.id===id) t.note=val; }); saveData(); }
+function setTab(t) { curTab=t; render(); }
+function setFilter(f) { curFilter=f; render(); }
+function setSort(s) { curSort=s; render(); }
+
+function toggleDone(id) { tasks.forEach(function(t){ if(t.id===id) t.done=!t.done; }); scheduleSave(); render(); }
+function removetask(id) { tasks=tasks.filter(function(t){ return t.id!==id; }); scheduleSave(); render(); }
+function setPriority(id,val) { tasks.forEach(function(t){ if(t.id===id) t.priority=val; }); scheduleSave(); render(); }
+function setDue(id,val) { tasks.forEach(function(t){ if(t.id===id) t.due=val; }); scheduleSave(); }
+function setNote(id,val) { tasks.forEach(function(t){ if(t.id===id) t.note=val; }); scheduleSave(); }
+function toggleNote(id) { expandNote=expandNote===id?null:id; render(); }
+
 function toggleTop3(id) {
   var t = tasks.find(function(x){ return x.id===id; });
   var count = tasks.filter(function(x){ return x.top3&&!x.done; }).length;
-  if (!t.top3 && count >= 3) { alert("You can only pin 3 tasks!"); return; }
-  t.top3 = !t.top3; saveData(); render();
+  if (!t.top3 && count>=3) { alert("You can only pin 3 tasks!"); return; }
+  t.top3=!t.top3; scheduleSave(); render();
 }
-function toggleNote(id) { expandNote = expandNote===id ? null : id; render(); }
+
 function addTask() {
   var v = document.getElementById("newTask").value.trim();
   if (!v) return;
-  tasks.push({id:nid++, t:v.toUpperCase(), sub:null, done:false, due:"", priority:"none", note:"", top3:false});
-  document.getElementById("newTask").value = "";
-  saveData(); render();
+  tasks.push({id:nid++,t:v.toUpperCase(),sub:null,done:false,due:"",priority:"none",note:"",top3:false});
+  document.getElementById("newTask").value="";
+  scheduleSave(); render();
 }
 
-// Drag and drop
-function onDragStart(e, id) {
-  dragSrcId = id;
-  e.dataTransfer.effectAllowed = "move";
-  setTimeout(function(){ document.querySelector('[data-id="'+id+'"]').classList.add("dragging"); }, 0);
+function onDragStart(e,id) {
+  dragSrcId=id; e.dataTransfer.effectAllowed="move";
+  setTimeout(function(){ var el=document.querySelector('[data-id="'+id+'"]'); if(el) el.classList.add("dragging"); },0);
 }
-function onDragEnd(e) {
-  document.querySelectorAll(".task").forEach(function(el){ el.classList.remove("dragging","drag-over"); });
-}
-function onDragOver(e, id) {
+function onDragEnd() { document.querySelectorAll(".task").forEach(function(el){ el.classList.remove("dragging","drag-over"); }); }
+function onDragOver(e,id) {
   e.preventDefault();
   document.querySelectorAll(".task").forEach(function(el){ el.classList.remove("drag-over"); });
-  var el = document.querySelector('[data-id="'+id+'"]');
-  if (el) el.classList.add("drag-over");
+  var el=document.querySelector('[data-id="'+id+'"]'); if(el) el.classList.add("drag-over");
 }
-function onDrop(e, targetId) {
+function onDrop(e,targetId) {
   e.preventDefault();
-  if (dragSrcId === targetId) return;
-  var srcIdx = tasks.findIndex(function(t){ return t.id===dragSrcId; });
-  var tgtIdx = tasks.findIndex(function(t){ return t.id===targetId; });
-  var moved = tasks.splice(srcIdx, 1)[0];
-  tasks.splice(tgtIdx, 0, moved);
-  curSort = "manual";
-  saveData(); render();
+  if (dragSrcId===targetId) return;
+  var si=tasks.findIndex(function(t){ return t.id===dragSrcId; });
+  var ti=tasks.findIndex(function(t){ return t.id===targetId; });
+  var moved=tasks.splice(si,1)[0]; tasks.splice(ti,0,moved);
+  curSort="manual"; scheduleSave(); render();
 }
 
 function render() {
-  var done = tasks.filter(function(t){ return t.done; }).length;
-  var total = tasks.length;
-  var pct = total ? Math.round(done/total*100) : 0;
-  document.getElementById("countMsg").textContent = done+"/"+total+" done";
-  document.getElementById("progFill").style.width = pct+"%";
-  document.getElementById("progPct").textContent = pct+"% complete";
+  var done=tasks.filter(function(t){ return t.done; }).length;
+  var total=tasks.length;
+  var pct=total?Math.round(done/total*100):0;
+  document.getElementById("countMsg").textContent=done+"/"+total+" done";
+  document.getElementById("progFill").style.width=pct+"%";
+  document.getElementById("progPct").textContent=pct+"% complete";
 
-  document.getElementById("tabAll").style.background = curTab==="all"?"#1e293b":"#e2e8f0";
-  document.getElementById("tabAll").style.color = curTab==="all"?"white":"#64748b";
-  document.getElementById("tabTop3").style.background = curTab==="top3"?"#1e293b":"#e2e8f0";
-  document.getElementById("tabTop3").style.color = curTab==="top3"?"white":"#64748b";
-  document.getElementById("top3Section").style.display = curTab==="top3"?"block":"none";
-  document.getElementById("allSection").style.display = curTab==="all"?"block":"none";
+  document.getElementById("tabAll").style.background=curTab==="all"?"#1e293b":"#e2e8f0";
+  document.getElementById("tabAll").style.color=curTab==="all"?"white":"#64748b";
+  document.getElementById("tabTop3").style.background=curTab==="top3"?"#1e293b":"#e2e8f0";
+  document.getElementById("tabTop3").style.color=curTab==="top3"?"white":"#64748b";
+  document.getElementById("top3Section").style.display=curTab==="top3"?"block":"none";
+  document.getElementById("allSection").style.display=curTab==="all"?"block":"none";
 
   ["all","active","done","high","overdue"].forEach(function(f){
-    var el = document.getElementById("f-"+f);
-    el.style.background = curFilter===f?"#1e293b":"#e2e8f0";
-    el.style.color = curFilter===f?"white":"#64748b";
+    var el=document.getElementById("f-"+f);
+    el.style.background=curFilter===f?"#1e293b":"#e2e8f0";
+    el.style.color=curFilter===f?"white":"#64748b";
   });
   ["manual","priority","due"].forEach(function(s){
-    var el = document.getElementById("s-"+s);
-    el.style.background = curSort===s?"#1e293b":"#e2e8f0";
-    el.style.color = curSort===s?"white":"#64748b";
+    var el=document.getElementById("s-"+s);
+    el.style.background=curSort===s?"#1e293b":"#e2e8f0";
+    el.style.color=curSort===s?"white":"#64748b";
   });
 
-  var top3 = tasks.filter(function(t){ return t.top3&&!t.done; });
-  var t3h = "";
-  if (!top3.length) t3h = '<div style="color:#94a3b8;font-size:14px;padding:12px;background:white;border-radius:8px">No tasks pinned yet. Go to All Tasks and tap ⭐</div>';
+  var top3=tasks.filter(function(t){ return t.top3&&!t.done; });
+  var t3h="";
+  if (!top3.length) t3h='<div style="color:#94a3b8;font-size:14px;padding:12px;background:white;border-radius:8px">No tasks pinned yet. Go to All Tasks and tap ⭐</div>';
   top3.forEach(function(t){
-    var diff = getDiff(t.due);
-    t3h += '<div class="top3card"><input type="checkbox" onchange="toggleDone('+t.id+')" style="width:18px;height:18px;cursor:pointer"><span style="flex:1">'+t.t+'</span>';
-    if (diff===0) t3h += '<span style="font-size:12px;color:#92400e">Due today</span>';
-    t3h += '</div>';
+    var diff=getDiff(t.due);
+    t3h+='<div class="top3card"><input type="checkbox" onchange="toggleDone('+t.id+')" style="width:18px;height:18px;cursor:pointer"><span style="flex:1">'+t.t+'</span>';
+    if(diff===0) t3h+='<span style="font-size:12px;color:#92400e">Due today</span>';
+    t3h+='</div>';
   });
-  document.getElementById("top3List").innerHTML = t3h;
+  document.getElementById("top3List").innerHTML=t3h;
 
-  var visible = tasks.filter(function(t){
-    if (curFilter==="active") return !t.done;
-    if (curFilter==="done") return t.done;
-    if (curFilter==="high") return t.priority==="high"&&!t.done;
-    if (curFilter==="overdue"){ var d=getDiff(t.due); return d!==null&&d<0&&!t.done; }
+  var visible=tasks.filter(function(t){
+    if(curFilter==="active") return !t.done;
+    if(curFilter==="done") return t.done;
+    if(curFilter==="high") return t.priority==="high"&&!t.done;
+    if(curFilter==="overdue"){ var d=getDiff(t.due); return d!==null&&d<0&&!t.done; }
     return true;
   });
 
-  if (curSort==="priority") visible = visible.slice().sort(function(a,b){ return PORDER[a.priority]-PORDER[b.priority]; });
-  else if (curSort==="due") visible = visible.slice().sort(function(a,b){
-    if (!a.due&&!b.due) return 0; if (!a.due) return 1; if (!b.due) return -1;
+  if(curSort==="priority") visible=visible.slice().sort(function(a,b){ return PORDER[a.priority]-PORDER[b.priority]; });
+  else if(curSort==="due") visible=visible.slice().sort(function(a,b){
+    if(!a.due&&!b.due) return 0; if(!a.due) return 1; if(!b.due) return -1;
     return new Date(a.due)-new Date(b.due);
   });
 
-  var h = "";
-  visible.forEach(function(t, i){
-    var diff = !t.done ? getDiff(t.due) : null;
-    var overdue = diff!==null&&diff<0;
-    var bc = overdue?"#ef4444":PCOL[t.priority];
-    h += '<div class="task" data-id="'+t.id+'" style="border-left-color:'+bc+';opacity:'+(t.done?0.5:1)+'" draggable="true" ondragstart="onDragStart(event,'+t.id+')" ondragend="onDragEnd(event)" ondragover="onDragOver(event,'+t.id+')" ondrop="onDrop(event,'+t.id+')">';
-    h += '<div class="task-row">';
-    h += '<span class="drag-handle" title="Drag to reorder">☰</span>';
-    h += '<input type="checkbox"'+(t.done?" checked":"")+" onchange=\"toggleDone("+t.id+")\" style=\"width:18px;height:18px;cursor:pointer\">";
-    h += '<span class="title'+(t.done?" done-title":"")+'">'+( i+1)+". "+t.t+"</span>";
-    if (overdue) h += '<span class="badge">OVERDUE</span>';
-    h += '<button class="star" onclick="toggleTop3('+t.id+')">'+(t.top3?"⭐":"☆")+"</button>";
-    h += '<button class="del" onclick="removetask('+t.id+')">×</button>';
-    h += "</div>";
-    h += '<div class="meta">';
-    h += '<select onchange="setPriority('+t.id+',this.value)" style="color:'+PCOL[t.priority]+'">';
-    Object.entries(PLABEL).forEach(function(e){ h += '<option value="'+e[0]+'"'+(t.priority===e[0]?" selected":"")+">"+e[1]+"</option>"; });
-    h += "</select>";
-    h += '<input type="date" value="'+(t.due||"")+'" onchange="setDue('+t.id+',this.value)">';
-    if (diff===0) h += '<span style="font-size:12px;color:#f97316">Due today</span>';
-    else if (diff!==null&&diff>0&&diff<=2) h += '<span style="font-size:12px;color:#f97316">In '+diff+'d</span>';
-    else if (diff!==null&&diff>2) h += '<span style="font-size:12px;color:#94a3b8">In '+diff+'d</span>';
-    h += '<button class="fbtn" style="background:#f1f5f9;color:#64748b" onclick="toggleNote('+t.id+')">'+(expandNote===t.id?"Hide note":"📝 Note")+"</button>";
-    h += "</div>";
-    if (expandNote===t.id) h += '<input class="note-inp" placeholder="Add a note..." value="'+(t.note||"")+'" oninput="setNote('+t.id+',this.value)">';
-    else if (t.note) h += '<div class="sub" style="color:#94a3b8;font-style:italic">📝 '+t.note+"</div>";
-    if (t.sub) h += '<div class="sub">• '+t.sub+"</div>";
-    h += "</div>";
+  var h="";
+  visible.forEach(function(t,i){
+    var diff=!t.done?getDiff(t.due):null;
+    var overdue=diff!==null&&diff<0;
+    var bc=overdue?"#ef4444":PCOL[t.priority];
+    h+='<div class="task" data-id="'+t.id+'" style="border-left-color:'+bc+';opacity:'+(t.done?0.5:1)+'" draggable="true" ondragstart="onDragStart(event,'+t.id+')" ondragend="onDragEnd()" ondragover="onDragOver(event,'+t.id+')" ondrop="onDrop(event,'+t.id+')">';
+    h+='<div class="task-row">';
+    h+='<span class="drag-handle">☰</span>';
+    h+='<input type="checkbox"'+(t.done?" checked":"")+" onchange=\"toggleDone("+t.id+")\" style=\"width:18px;height:18px;cursor:pointer\">";
+    h+='<span class="title'+(t.done?" done-title":"")+'">'+( i+1)+". "+t.t+"</span>";
+    if(overdue) h+='<span class="badge">OVERDUE</span>';
+    h+='<button class="star" onclick="toggleTop3('+t.id+')">'+(t.top3?"⭐":"☆")+"</button>";
+    h+='<button class="del" onclick="removetask('+t.id+')">×</button>';
+    h+="</div>";
+    h+='<div class="meta">';
+    h+='<select onchange="setPriority('+t.id+',this.value)" style="color:'+PCOL[t.priority]+'">';
+    Object.entries(PLABEL).forEach(function(e){ h+='<option value="'+e[0]+'"'+(t.priority===e[0]?" selected":"")+">"+e[1]+"</option>"; });
+    h+="</select>";
+    h+='<input type="date" value="'+(t.due||"")+'" onchange="setDue('+t.id+',this.value)">';
+    if(diff===0) h+='<span style="font-size:12px;color:#f97316">Due today</span>';
+    else if(diff!==null&&diff>0&&diff<=2) h+='<span style="font-size:12px;color:#f97316">In '+diff+'d</span>';
+    else if(diff!==null&&diff>2) h+='<span style="font-size:12px;color:#94a3b8">In '+diff+'d</span>';
+    h+='<button class="fbtn" style="background:#f1f5f9;color:#64748b" onclick="toggleNote('+t.id+')">'+(expandNote===t.id?"Hide note":"📝 Note")+"</button>";
+    h+="</div>";
+    if(expandNote===t.id) h+='<input class="note-inp" placeholder="Add a note..." value="'+(t.note||"")+'" oninput="setNote('+t.id+',this.value)">';
+    else if(t.note) h+='<div class="sub" style="color:#94a3b8;font-style:italic">📝 '+t.note+"</div>";
+    if(t.sub) h+='<div class="sub">• '+t.sub+"</div>";
+    h+="</div>";
   });
-  document.getElementById("taskList").innerHTML = h;
+  document.getElementById("taskList").innerHTML=h;
 }
 </script>
 </body>
